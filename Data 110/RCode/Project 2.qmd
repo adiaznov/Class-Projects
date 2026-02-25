@@ -1,0 +1,247 @@
+---
+title: "Project 2"
+author: "A. Diaz-Nova"
+format: pdf
+editor: visual
+---
+
+## Introduction
+
+My topic for discussion and statistical analysis will be about the leading team statistics from a league named NWSL(i.e., National Woman Soccer League) which ranges from a collection of multiple seasons (i.e., in terms of what year the competitive season is played, 2016 - 2022). To touch on the subject matter, "NWSL is a twelve-team Division-1 women's professional soccer league featuring national players from around the world." - NWSL website
+
+This dataset is a culmination of important statistics that can have significant insights on a team's performance throughout their respective competitive season. Thus, marks the usage of data through a retrospective lens given statistics like pass percentage, games played, goal differential, and so on. My hope is to find trends in this dataset to see if teams are improving or regressing upon each season.
+
+
+## Load in the necessary libraries
+
+```{r message=FALSE}
+library(dplyr)
+library(tidyverse)
+library(janitor)
+library(psych)
+library(RColorBrewer)
+library(highcharter)
+library(ggplot2)
+```
+
+# Load in the data
+
+```{r}
+# Set your working directory
+setwd("C:/Users/Angel/OneDrive/Documents/Datasets")
+
+# Use the read.csv function to load in the csv file, and name it nwsl
+nwsl <- read.csv("nwsl-team-stats.csv")
+
+# Use the head function to see the first 6 rows and the variables
+head(nwsl)
+```
+
+*NOTE*: The data above has a column for the name of a team and the rest are percentages of various categorized events during a competitive game
+
+# Cleaning the dataset
+
+```{r include=FALSE}
+nwsl |>
+
+# clean_names() function allows objects in a dataset to remain with characters, numbers, and letters  
+  clean_names() |>
+
+# The next two functions will remove any missing data in regards to rows or columns    
+  remove_empty(which=c("rows")) |>
+  remove_empty(which=c("cols")) 
+
+# Colnames() function will help us see if all the variables are lowercased and readible
+colnames(nwsl)
+```
+
+
+## Testing dataset for correlation
+
+```{r}
+# pairs.panels() shows a scatterplot of matrices, and helps in our case of a small dataset
+pairs.panels(nwsl[4:13],
+             gap = 0,
+             pch = 21,
+             lm = TRUE)
+```
+
+From the presented visualization, I see a strong relationship that consist of goals and goal_differential. 
+
+Here's the catch, goal_differential description is Goals Scored - Goals conceded. Let us use other predictor variables to build a linear or multiple regression analysis
+
+# New subset for pairs.panel
+
+```{r}
+cor_nwsl <- nwsl |>
+  select(goal_differential, cross_accuracy, pass_pct, pass_pct_opposition_half, possession_pct, shot_accuracy, tackle_success_pct, goal_conversion_pct)
+
+head(cor_nwsl)
+```
+
+```{r}
+pairs.panels(cor_nwsl[1:7],
+             gap = 0,
+             pch = 21)
+```
+
+There is a strong relationship between pass_pct and pass_pct_opposition_half, which makes sense, the higher quality of passes, the easier to maintain the ball in possession when inside of the opposition half.
+
+## Multiple Regression Analysis
+
+```{r}
+fit1 <- lm(data = nwsl, goal_differential ~ possession_pct + cross_accuracy + pass_pct + pass_pct_opposition_half + shot_accuracy + tackle_success_pct + goal_conversion_pct)
+summary(fit1)
+```
+
+Which p-values are least significant that can be removed to improve the model? By looking at the output, shot_accuracy and pass_pct_opposition_half seem the least useful in this case (i.e., higher p-value). 
+
+The R-squared value: 0.5683, in other words, about 57% approximately of the variation in observations can be explained by this model, but maybe we can improve it.
+
+# Diagnostic Plots
+
+*FAULTY CODE*:
+
+autoplot(fit1)
+
+*ERROR*:
+
+"processing file: Project-2.rmarkdown
+  |..........................                         |  52% [unnamed-chunk-8] 
+Quitting from lines 104-105 [unnamed-chunk-8] (Project-2.rmarkdown)
+Error in `autoplot()`:
+! Objects of class <lm> are not supported by autoplot.
+ℹ have you loaded the required package?
+Backtrace:
+ 1. ggplot2::autoplot(fit1)
+ 2. ggplot2:::autoplot.default(fit1)"
+ 
+Rendering the document would not let me include my diagnostic plots but the findings are still below!
+
+1) A linear model is appropriate - blue line is relatively horizontal
+
+2) Distribution looks relatively normal
+
+3) Influential observations may be skewing the variance distribution, keep an eye out for the odd one of the group
+
+4) Outliers who have high leverage are no good for your model, which causes problematic headaches, but we can remove those observations if must
+
+## Simplifying further
+
+```{r}
+fit2 <- lm(data = nwsl, goal_differential ~ possession_pct + cross_accuracy + pass_pct + tackle_success_pct + goal_conversion_pct)
+summary(fit2)
+```
+
+This model's adj r-squared has lowered, which is not a good sign. This means choosing to remove "pass_pct_opposition_half" and "shot_accuracy" was not the best option.
+
+To cap off, the first model is a better model overall because of the adj r-squared value being higher. The equation is put below and is a reasonable form of prediction for goal differential in a competitive NWSL season. 
+
+fit1: goal_differential = 2.107(possession_pct) + 1.802(cross_accuracy) - 1.804(pass_pct) + 0.838(pass_pct_opposition_half) - 0.423(shot_accuracy) + 2.719(goal_conversion_pct)
+
+```{r}
+anova(fit2,fit1)
+```
+
+More proof that the first fit is a better overall model when in the context of a multiple regression analysis. 
+
+## Plots to test correlation
+
+Possession_pct has the lowest p-value in the regression analysis, maybe something worth exploring, given the unadequate adj-Rsquare value.
+
+```{r}
+p1 <- nwsl |>
+  ggplot(aes(x = possession_pct, y = goal_differential)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE)
+p1
+```
+
+A plot to test the linear regression model of possession_pct and goal_differential. Found good insights, for two positive reasons. One there is a correlation and the slope is increasing, which is crucial when you consider the value of goal differential. Secondly, how conclusive can we make our interpretation of the correlation when the variance of the distance between points and the 'lm' line is relatively moderate. That there is a slight correlation.
+
+```{r}
+p2 <- nwsl |>
+
+# Filtering all teams that have high observations, n = 6  
+  filter(team_name %in% c('Chicago Red Stars', 'Houston Dash', 'NJ/NY Gotham FC', 'OL Reign', 'Portland Thorns FC', 'Washington Spirit')) |>
+
+# First plot with ggplot() and setting aesthetics    
+  ggplot(aes(x = possession_pct, y = goal_differential, color = team_name)) +
+  geom_point(alpha = 0.5) +
+  geom_line() +
+  
+# Make a plot for every team by facet_wrap function   
+  facet_wrap(~team_name) +
+  theme_bw() +
+  labs(x = "Percentage of Overall Ball Possession", y = "Goal Difference", title = "GOAL DIFFERENCE VS BALL POSSESSION", subtitle = "From 2016-2022 Competitive NWSL Seasons", caption = "SCORE Sports DATA Repository", color = "Name of NWSL Team") +
+  scale_color_brewer(palette = "Dark2")
+p2
+```
+
+Portland Thorns FC seem to perform the most consistent given the impressive goal difference record of over +10 and a heavy ball possession side (i.e, greater than 50%). 
+
+```{r}
+nwsl |>
+  group_by(team_name) |>
+  count(team_name) |>
+  arrange(desc(n)) 
+```
+
+The top six teams have the most observations to test how they progressed throughout each season in respect of goal difference.
+
+```{r}
+p3 <- nwsl |>
+ 
+# Filtering all teams that have high observations, n = 6  
+  filter(team_name %in% c('Chicago Red Stars', 'Houston Dash', 'NJ/NY Gotham FC', 'OL Reign', 'Portland Thorns FC', 'Washington Spirit')) |>
+
+# First plot with ggplot() and setting aesthetics    
+  ggplot(aes(x = season, y = goal_differential, color = team_name)) +
+  geom_point(alpha = 0.5) +
+  geom_line() +
+  
+# Make a plot for every team by facet_wrap function   
+  facet_wrap(~team_name) +
+  theme_bw() +
+  labs(x = "Season", y = "Goal Difference", title = "GOAL DIFFERENCE THROUGHOUT THE YEARS", subtitle = "From 2016-2022 NWSL Competitive Seasons", caption = "SCORE Sports DATA Repository", color = "Name of NWSL Team") +
+  scale_color_brewer(palette = "Dark2")
+
+p3
+```
+
+As mentioned before, Portland Thorns FC are a strong competitor in the league, when you consider the minimal fluctuation over the years. In other words, this shows a relatively normal consistency from a team of their calibre, which in itself is difficult when playing at the highest level of their profession.
+
+## Final plot
+
+*FAULTY CODE BELOW*
+
+p4 <- nwsl |>
+ 
+# Filtering all teams that have high observations, n = 6  
+  filter(team_name %in% c('Chicago Red Stars', 'Houston Dash', 'NJ/NY Gotham FC', 'OL Reign', 'Portland Thorns FC', 'Washington Spirit')) |>
+
+# First plot with ggplot() and setting aesthetics    
+  highchart() |>
+  hc_add_series(data = nwsl,
+                type = "line",
+                hcaes(x = season,
+                      y = goal_differential, group = team_name)) |>
+  hc_colors("Dark2") 
+  #facet_wrap(~team_name)
+
+p4
+```
+
+I found it too challenging to insert a highcharter with a tooltip in respect for each team. That was my plan for the last plot. It would consist of all other statistics for each point, which would then be a better representation overall of team performance throughout the years.
+
+## Conclusion
+
+By default, the most influential indicator of a team's ability is goal differential (i.e., goals scored - goals conceded), regardless of the other team performance statistics. In defense, a high 'GD' consists of scoring tons of shots and conceding few shots as possible, which ultimately the challenge of the sport. Given the background research(e.g., from the works cited page), I wanted to explore what aspects, or should I say, which statistics are relevant predictor variables of goal differential. 
+
+What did I find? Firstly, I used a multiple regression analysis of multiple predictor variables to test a response variable in goal_differential. My findings were not compelling enough, even though 0.57 or 57% of the model can explain the variance (bad wording) of the data. In the end, I moved onto a linear regression model for one singular explanatory variable in possession_pct to test for correlation like many attempts before.
+
+The findings were promising, higher possession seem to indicate or predict better numbers in goal difference (goals scored- goals conceded). Perhaps not the most profound in terms of significance, but was interesting to explore nonetheless. 
+
+# Works Cited
+
+Yurko, R. (2023, March 18). National Women’s Soccer League team statistics. SCORE Sports Data Repository - National Women’s Soccer League Team Statistics. https://data.scorenetwork.org/soccer/nwsl-team-stats.html 
